@@ -18,18 +18,39 @@ def send_msg_2_slack(msg):
     )
     return response
 
-def send_img_2_slack(img):
+def send_img_2_slack(img, nrby=True):
+    """
+    Posts an image from url string to hardcoded slack channels.
+
+    Positional arguments:
+    img (string) -- publically accessible url of image to send
+
+    Keyword arguments:
+    nrby (bool)  -- whether a known source is near the candidate (default True)
+
+    Returns string containing slack responses.
+    """
+
+    gb_images = 'C013W4P08MB'
+    gb_alerts = 'CPAK5A4G2'
+    gb_unknown = 'C08JCLTMNJD'
     with open("config/conf.yaml", 'r') as stream:
         data_loaded = yaml.load(stream)
     TOKEN = data_loaded['slack']['bot_oauth']
     
     client = SlackClient(TOKEN)
     attachments = [{"title": "", "image_url": img}]
-    response = client.chat_postMessage(channel='CPAK5A4G2', text='',
+    response = client.chat_postMessage(channel=gb_alerts, text='',
                 attachments=attachments)
-    response2 = client.chat_postMessage(channel='C013W4P08MB', text='',
+    response2 = client.chat_postMessage(channel=gb_images, text='',
                 attachments=attachments)
-    return f"{response}\n{response2}"
+    if nrby: #old case
+        return f"{response}\n{response2}"
+    else: #no nearby sources
+        response3 = client.chat_postMessage(channel=gb_unknown, text='',
+                attachments=attachments)
+        return f"{response}\n{response2}\n{response3}"
+
 
 
 if __name__ == "__main__":

@@ -43,7 +43,7 @@ def begin_main(values):
     TOKEN = data_loaded['dropbox']['token']
     dbx = dropbox.Dropbox(TOKEN)
     try:
-        fout=plotem(values.file)
+        fout, known_src = plotem(values.file, nrby=True) #modified: get nearby source info
         file_name=fout.split('/')[-1][:-3]
         with open(fout, 'rb') as f:
             data = f.read()
@@ -54,7 +54,7 @@ def begin_main(values):
             slack_send_url=re.sub(r"\&dl\=0", "&dl=1", url) # Replaced ? with & b/c change in dropbox url
         logging.info(f'Create png at {fout}')
         logging.info(f'Dropbox URL {slack_send_url}')
-        logging.info(send_img_2_slack(slack_send_url))
+        logging.info(send_img_2_slack(slack_send_url, nrby=known_src))
     except Exception as error:
         logging.warning(f"Encountered {error} while processing file {values.file}")
     return None

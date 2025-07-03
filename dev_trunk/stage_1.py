@@ -172,7 +172,7 @@ def begin_main(values):
         send2gpuQ(jess_command)
 
         heimdall_command = (
-            "heimdall -nsamps_gulp 524288 -dm 10 10000 -boxcar_max 128 -cand_sep_dm_trial 200 -cand_sep_time 128 -cand_sep_filter 3"
+            "heimdall -nsamps_gulp 524288 -dm 10 10000 -boxcar_max 4096 -cand_sep_dm_trial 200 -cand_sep_time 128 -cand_sep_filter 3"
             + " -rfi_no_broad"  #  -rfi_no_narrow
             + " -output_dir {}".format(out_dir)
             + " -f {}".format(clean_fil_path)

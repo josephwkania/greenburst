@@ -13,12 +13,15 @@ import logging
 import tqdm
 from psrqpy import QueryATNF
 
-def qpsr(sample_ra =6.02363,sample_dec =-72.08128):
-    (ra,dec)=deg2HMS(ra=sample_ra, dec=sample_dec)
+def qpsr(sample_ra =6.02363,sample_dec =-72.08128, params = ['BNAME','JNAME', 'RAJ', 'DECJ','DM', 'S1400', 'P0'], condition = None):
+    if isinstance(sample_ra, str): #allow preformatted ra/dec
+        (ra,dec) = (sample_ra, sample_dec)
+    else:
+        (ra,dec)=deg2HMS(ra=sample_ra, dec=sample_dec)
     c=[ra,dec,1]
     #c=['00h24m05.67s','-72d04m52.62s',1]
     logging.info(f'Querying with  {c}')
-    query = QueryATNF(params=['BNAME','JNAME', 'RAJ', 'DECJ','DM', 'S1400', 'P0'],
+    query = QueryATNF(params=params, condition=condition,
                       circular_boundary=c,include_errs=False)
     return query, query.table[:5]
 
@@ -99,7 +102,21 @@ def h5_loction_2_stuff(h5_file):
 
     return stuff_dict, param_dict
 
-def plotem(h5_file,fout=None):
+def plotem(h5_file,fout=None,nrby=False):
+    """
+    Generates a plot from an h5 filename.
+
+    Positional arguments:
+    h5_file (string) -- filename of h5 file
+
+    Keyword arguments:
+    fout (string) -- filename of output file (default None)
+    nrby (bool)   -- change return type (default False)
+    
+    Returns a string containing the file name of the generated plot if nrby is False
+    Else, returns (string, bool) tuple with the same string and a boolean which is True if there is a known nearby source.
+    """
+
     stuff_dict, param_dict = h5_loction_2_stuff(h5_file)
     ts = np.linspace(-128,128,num=256)*.256*param_dict['Width (samples)']
 
@@ -159,7 +176,10 @@ def plotem(h5_file,fout=None):
     if fout is None:
         fout = h5_file[:-3]+'.png'
     plt.savefig(fout, bbox_inches='tight')
-    return fout
+    if nrby: #return True as second part of tuple if known source nearby
+        return (fout, param_dict['Known Nearby Sources'] != str(None))
+    else: #old function output
+        return fout
 
 if __name__ == '__main__':
     parser=ArgumentParser(description='Plot cands', formatter_class=ArgumentDefaultsHelpFormatter)

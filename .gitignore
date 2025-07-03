@@ -1,0 +1,4 @@
+dev_trunk/test.db
+dev_trunk/test.db-shm
+dev_trunk/test.db-wal
+dev_trunk/__pycache__/plot_cand.cpython-313.pyc
