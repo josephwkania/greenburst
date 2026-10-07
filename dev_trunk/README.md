@@ -69,6 +69,8 @@ Arguments:
   for 65 MSPs and 18 normal pulsars (class column msp/canonical; nanograv column 15yr)
   when pointed at a known low-DM pulsar (low_dm_targets.csv). Rebuild the list with
   `python3 low_dm_targets.py make`; tests: `python -m pytest tests` in dev_trunk
+  Only targets rated likely/possible/marginal/unknown (single_pulses column) are
+  searched; set GREENBURST_LOW_DM_RATINGS (e.g. "likely,possible" or "all") to change
 - `pulsar_plot_limit.py` : Known pulsars (bright_pulsars.csv and the low-DM targets) get at most 2 Slack plots
   per file in the first 2 files of a visit; the rest are counted in one summary per file.
   Rebuild the list with pulsar_lookup.py --all --dm-match --fetch-positive --csv bright, then

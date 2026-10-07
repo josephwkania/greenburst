@@ -30,6 +30,10 @@ The single-pulse columns come from single_pulse_estimates.csv, made with sp_rate
                               (no usable catalogue flux)
     sp_notes                  caveats: zero-DM filter, scintillation, rate limit
 
+Only targets whose single_pulses rating is in SEARCH_RATINGS are searched (rows
+without a rating are always kept). Override with the environment variable
+GREENBURST_LOW_DM_RATINGS, e.g. "likely,possible", or "all" to search every target.
+
 Make the target list (needs the psrcat program and catalogue):
     python3 low_dm_targets.py make -o low_dm_targets.csv
 """
@@ -52,6 +56,9 @@ DM_MARGIN = 3.0  # heimdall starts this far below the target DM
 DM_TOL_ABS = 2.0  # stage 2 window: |DM - DM_psr| <= max(DM_TOL_ABS, DM_TOL_FRAC * DM_psr)
 DM_TOL_FRAC = 0.1
 MAX_WINDOW_CANDS = 100  # per file, so a bright pulsar cannot flood candmaker/FETCH
+# Skip targets that cannot give single pulses (optimistic model < 1 candidate per hour)
+SEARCH_RATINGS = ("likely", "possible", "marginal", "unknown")
+RATINGS_ENV = "GREENBURST_LOW_DM_RATINGS"
 
 Target = namedtuple("Target", ["name", "ra_deg", "dec_deg", "dm"])
 
@@ -78,9 +85,28 @@ J2234+0611 J2234+0944 J2302+4442 J2317+1439 J2322+2057
 """.split())
 MSP_MAX_P0 = 0.03  # s
 
-def load_targets(path=TARGETS_FILE):
+def search_ratings():
     """
-    Reads a target list (CSV with name, ra_deg, dec_deg, dm columns).
+    The single_pulses ratings to search: GREENBURST_LOW_DM_RATINGS if set
+    (comma separated; "all" for no filter), else SEARCH_RATINGS. None means all.
+    """
+    value = os.environ.get(RATINGS_ENV)
+    if value is None:
+        return SEARCH_RATINGS
+    value = value.strip().lower()
+    if value in ("", "all", "*"):
+        return None
+    return tuple(r.strip() for r in value.split(",") if r.strip())
+
+
+def load_targets(path=TARGETS_FILE, ratings=None):
+    """
+    Reads a target list (CSV with name, ra_deg, dec_deg, dm columns; any others
+    are ignored).
+    Args:
+        path: The CSV file.
+        ratings: If given, keep only rows whose single_pulses value is one of
+            these; rows without a single_pulses value are kept.
 
     Returns:
         A list of Target; empty if the file is missing.
@@ -88,10 +114,16 @@ def load_targets(path=TARGETS_FILE):
     if not os.path.isfile(path):
         logging.warning("No low-DM target list at %s; using the normal DM limits", path)
         return []
-    targets = []
+    targets, skipped = [], []
     with open(path) as f:
         for row in csv.DictReader(f):
+            rating = (row.get("single_pulses") or "").strip().lower()
+            if ratings is not None and rating and rating not in ratings:
+                skipped.append(row["name"])
+                continue
             targets.append(Target(row["name"], float(row["ra_deg"]), float(row["dec_deg"]), float(row["dm"])))
+    if skipped:
+        logging.debug("Not searching %d targets rated outside %s", len(skipped), ", ".join(ratings))
     return targets
 
 
@@ -167,7 +199,8 @@ def stage1_dm_min(influx_df, obs_dir, targets_file=TARGETS_FILE):
         return DEFAULT_DM_MIN, []
     try:
         valid = influx_df[influx_df["DATA_VALID"] == 1]
-        matched = targets_in_beam(valid["RA_deg"].values, valid["DEC_deg"].values, load_targets(targets_file))
+        matched = targets_in_beam(valid["RA_deg"].values, valid["DEC_deg"].values,
+                                  load_targets(targets_file, search_ratings()))
         if matched:
             write_obs_targets(obs_dir, matched)
             logging.info(

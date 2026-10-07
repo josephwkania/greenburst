@@ -88,6 +88,38 @@ def test_target_rows():
     assert len(ldt.NANOGRAV_15YR) == 68
 
 
+def test_rating_filter(tmp_path, monkeypatch):
+    path = tmp_path / "t.csv"
+    path.write_text("name,ra_deg,dec_deg,dm,single_pulses\n"
+                    "A,1,1,5,likely\nB,2,2,6,unlikely\nC,3,3,7,\nD,4,4,8,unknown\nE,5,5,9,possible\n")
+    names = lambda ratings: [t.name for t in ldt.load_targets(str(path), ratings)]
+    assert names(None) == ["A", "B", "C", "D", "E"]
+    assert names(("likely", "possible")) == ["A", "C", "E"]  # unrated rows always kept
+    monkeypatch.delenv(ldt.RATINGS_ENV, raising=False)
+    assert ldt.search_ratings() == ldt.SEARCH_RATINGS and "unlikely" not in ldt.SEARCH_RATINGS
+    monkeypatch.setenv(ldt.RATINGS_ENV, " Likely , possible ")
+    assert ldt.search_ratings() == ("likely", "possible")
+    monkeypatch.setenv(ldt.RATINGS_ENV, "all")
+    assert ldt.search_ratings() is None
+    # a minimal four-column file has no ratings: every row is kept
+    plain = tmp_path / "plain.csv"
+    plain.write_text("name,ra_deg,dec_deg,dm\nA,1,1,5\n")
+    assert [t.name for t in ldt.load_targets(str(plain), ("likely",))] == ["A"]
+
+
+def test_stage1_skips_unlikely_targets(tmp_path, monkeypatch):
+    monkeypatch.delenv(ldt.RATINGS_ENV, raising=False)
+    rows = {r["name"]: r for r in csv.DictReader(open(ldt.TARGETS_FILE))}
+    j2234 = rows["J2234+0611"]  # DM 10.77, rated unlikely
+    assert j2234["single_pulses"] == "unlikely"
+    pointing = pd.DataFrame({"DATA_VALID": [1] * 5, "RA_deg": [float(j2234["ra_deg"])] * 5,
+                             "DEC_deg": [float(j2234["dec_deg"])] * 5})
+    assert ldt.stage1_dm_min(pointing, str(tmp_path / "a")) == (10.0, [])  # not searched by default
+    monkeypatch.setenv(ldt.RATINGS_ENV, "all")
+    dm_min, matched = ldt.stage1_dm_min(pointing, str(tmp_path))
+    assert [t.name for t in matched] == ["J2234+0611"] and dm_min == pytest.approx(7.77)
+
+
 def test_missing_target_list(tmp_path):
     assert ldt.load_targets(str(tmp_path / "nope.csv")) == []
 
