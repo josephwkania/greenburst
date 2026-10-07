@@ -422,6 +422,15 @@ def test_stage1_on_target(stubs, tmp_path):
     assert queue == [("stage02_queue", str(obs_dir))]
 
 
+def test_stage1_slew_onto_target_mid_file(stubs, tmp_path):
+    # 5 min on blank sky 2 deg away, then the telescope moves onto J1022+1001
+    influx = pointing(155.742, 10.032)
+    influx.loc[:299, "RA_deg"] = 153.742
+    command, _, obs_dir = run_stage1(stubs, tmp_path, influx)
+    assert " -dm 7.26 10000 " in command
+    assert [t.name for t in ldt.read_obs_targets(str(obs_dir))] == ["J1022+1001"]
+
+
 def test_stage1_off_target_unchanged(stubs, tmp_path):
     influx = pointing(83.633, 22.0145)  # Crab: DM 56.8, not a target
     new, new_queue, obs_dir = run_stage1(stubs, tmp_path, influx)
