@@ -26,9 +26,11 @@ DEV_TRUNK = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, DEV_TRUNK)
 
 import low_dm_targets as ldt  # noqa: E402
+import pulsar_plot_limit as ppl  # noqa: E402
 
 J1022 = ldt.Target("J1022+1001", 155.74125, 10.031333, 10.26)
 J2145 = ldt.Target("J2145-0750", 326.46, -7.838472, 9.01)
+B0355 = ldt.Target("J0358+5413", 59.723849, 54.220496, 57.14)
 MJD = 61000.5
 
 # heimdall .cand columns: snr sample tcand width dm_trial dm members begin end
@@ -116,17 +118,97 @@ def test_stage1_helper(tmp_path):
     assert ldt.stage1_dm_min(pd.DataFrame({"x": [1]}), str(tmp_path)) == (10.0, [])
 
 
-def test_split_for_stage3():
-    cands = [
-        "/x/cand_tstart_1_tcand_2.37_dm_10.29140_snr_8.03.h5",
-        "/x/cand_tstart_1_tcand_5.00_dm_22.53590_snr_9.30.h5",
-        "/x/cand_tstart_1_tcand_6.00_dm_380.28700_snr_110.h5",
+def h5(dm, snr, tcand=1.0):
+    return "/x/cands/cand_tstart_{}_tcand_{:.7f}_dm_{:.5f}_snr_{:.5f}.h5".format(MJD, tcand, dm, snr)
+
+
+def test_h5_dm_snr():
+    assert ppl.h5_dm_snr(h5(10.2914, 8.03)) == (10.2914, 8.03)
+    assert ppl.h5_dm_snr("/x/not_a_candidate.h5") == (None, None)
+
+
+def test_assign_to_pulsars():
+    cands = [h5(57.0, 9), h5(57.5, 30), h5(380.3, 110), h5(10.29, 8.1), h5(56.0, 12)]
+    others, by_pulsar = ppl.assign_to_pulsars(cands, [B0355, J1022])
+    assert others == [cands[2]]
+    assert by_pulsar["J0358+5413"] == [cands[1], cands[4], cands[0]]  # highest S/N first
+    assert by_pulsar["J1022+1001"] == [cands[3]]
+
+
+def test_pulsars_in_beam():
+    df = pd.DataFrame({"RA_deg": [59.8, None], "DEC_deg": [54.3, None]})
+    assert ppl.pulsars_in_beam(df, [B0355, J1022]) == [B0355]
+    assert ppl.pulsars_in_beam(df.assign(DEC_deg=[54.6, None]), [B0355]) == []  # 0.38 deg away
+    assert ppl.pulsars_in_beam(pd.DataFrame({"x": [1]}), [B0355]) == []
+    assert ppl.pulsars_in_beam(None, [B0355]) == []
+
+
+def test_plot_limiter_sessions(tmp_path):
+    path = str(tmp_path / ppl.STATE_NAME)
+    cands = ["a", "b", "c"]
+    file_step = 8.4 / 1440
+    chosen = []
+    for i in range(4):  # one visit, consecutive 8.4 min files
+        limiter = ppl.PlotLimiter(path)  # state survives between files
+        chosen.append(limiter.choose("J0358+5413", cands, MJD + i * file_step))
+        limiter.save()
+    assert chosen == [["a", "b"], ["a", "b"], [], []]
+    # a new visit after more than 30 min
+    limiter = ppl.PlotLimiter(path)
+    assert limiter.choose("J0358+5413", cands, MJD + 3 * file_step + 31 / 1440) == ["a", "b"]
+    # other pulsars are counted separately
+    assert limiter.choose("J1705-1906", ["x"], MJD) == ["x"]
+
+
+def test_plot_limiter_bad_state(tmp_path):
+    path = tmp_path / ppl.STATE_NAME
+    path.write_text("not json")
+    assert ppl.PlotLimiter(str(path)).choose("J0358+5413", ["a", "b", "c"], MJD) == ["a", "b"]
+
+
+def test_select_for_stage3(tmp_path):
+    cands = [h5(57.0, 9), h5(57.5, 30), h5(380.3, 110), h5(56.0, 12)]
+    cand_df = pd.DataFrame({"RA_deg": [59.72], "DEC_deg": [54.22]})
+    to_stage3, summary = ppl.select_for_stage3(cands, [], cand_df, MJD, str(tmp_path))
+    assert to_stage3 == [cands[2], cands[1], cands[3]]
+    assert summary == "Known pulsars at MJD {}: J0358+5413: 3 FETCH-positive, 2 plotted".format(MJD)
+    # no known pulsar in the beam: everything goes to stage 3, no summary
+    off = pd.DataFrame({"RA_deg": [10.0], "DEC_deg": [0.0]})
+    assert ppl.select_for_stage3(cands, [], off, MJD, str(tmp_path)) == (cands, None)
+    # low-DM targets are always reported
+    _, summary = ppl.select_for_stage3([], [J1022], off, MJD, str(tmp_path), n_window=4)
+    assert summary == "Known pulsars at MJD {}: J1022+1001: 0 FETCH-positive; 4 low-DM window cands".format(MJD)
+    # any failure sends everything
+    assert ppl.select_for_stage3(cands, [], cand_df, MJD, str(tmp_path / "missing" / "dir")) == (cands, None)
+
+
+def test_shipped_bright_list():
+    bright = ldt.load_targets(ppl.BRIGHT_FILE)
+    names = {t.name for t in bright}
+    assert len(bright) >= 40
+    assert {"J0358+5413", "J1705-1906", "J0332+5434", "J1939+2134"} <= names
+    # one entry per globular cluster, and no near-duplicates
+    assert sum(t.name.startswith("J1748-2446") for t in bright) == 1
+    assert "J2023+2853_P" not in names
+
+
+def test_make_bright_list(tmp_path):
+    summary = tmp_path / "summary.csv"
+    rows = [
+        ("J0358+5413", "B0355+54", 57.14, 7191, 59.723849, 54.220496),
+        ("J1748-2446ab", "", 242.2, 140, 267.02, -24.78),
+        ("J1748-2446A", "B1744-24A", 242.36, 140, 267.009372, -24.777169),
+        ("J2022+2854", "B2020+28", 24.63, 1318, 305.654446, 28.906418),
+        ("J2023+2853_P", "", 22.74, 967, 305.8, 28.88),  # 0.13 deg away, same DM window
+        ("J0147+5922", "B0144+59", 40.11, 9, 26.9, 59.4),  # too few
     ]
-    to_stage3, per_target = ldt.split_for_stage3(cands, [J1022], 20)
-    assert to_stage3 == cands[1:]
-    assert per_target == {"J1022+1001": 1}
-    assert "J1022+1001: 1" in ldt.summary_message(per_target, [J1022], 2, MJD)
-    assert ldt.summary_message({}, [], 0, MJD) is None
+    with open(str(summary), "w") as f:
+        f.write("pulsar,bname,dm,dm_match,ra_deg,dec_deg\n")
+        for r in rows:
+            f.write(",".join(str(v) for v in r) + "\n")
+    kept = ppl.make_bright_list(str(summary), str(tmp_path / "bright.csv"))
+    assert [t.name for t in kept] == ["J0358+5413", "J2022+2854", "J1748-2446A"]
+    assert ldt.load_targets(str(tmp_path / "bright.csv")) == kept
 
 
 def test_targets_from_psrcat():
@@ -167,7 +249,7 @@ def stubs(monkeypatch, tmp_path):
         return real_open(file, *args, **kwargs)
 
     monkeypatch.setattr(builtins, "open", open_redirected)
-    state = {"influx": None, "tstart": MJD, "predict": None}
+    state = {"influx": None, "tstart": MJD, "predict": None, "pointing": None}
 
     def module(name, **attrs):
         mod = types.ModuleType(name)
@@ -202,6 +284,8 @@ def stubs(monkeypatch, tmp_path):
                        "SCPROJID", "WEBCNTRL", "IFV1TNCI", "ATRXOCTA", "cand_gl", "cand_gb", "cand_ne2001",
                        "cand_ymw16"):
             cand_df.loc[:, column] = None
+        if state["pointing"] is not None:
+            cand_df.loc[:, "RA_deg"], cand_df.loc[:, "DEC_deg"] = state["pointing"]
         cand_df.loc[:, "cand_valid"] = 1
         return cand_df
 
@@ -296,30 +380,32 @@ def test_stage1_skip_metadata(stubs, tmp_path):
     assert queue == [("stage02_queue", str(obs_dir))]
 
 
-def make_obs(work, rows, targets=None):
-    obs = work / "data_2026-01-01_00-00-00"
+def make_obs(work, rows, targets=None, name="data_2026-01-01_00-00-00"):
+    obs = work / name
     obs.mkdir(parents=True)
     with open(str(obs / "2026-01-01-00:00:34_01.cand"), "w") as f:
         for row in rows:
             f.write("\t".join(str(v) for v in row) + "\n")
-    (obs / "data_2026-01-01_00-00-00_jb_4096.fil").write_text("fake")
+    (obs / (name + "_jb_4096.fil")).write_text("fake")
     (obs / "bad_chans.flag").write_text("")
     if targets:
         ldt.write_obs_targets(str(obs), targets)
     return obs
 
 
-def run_stage2(stubs, tmp_path, rows, targets=None, original=False, label=1):
+def run_stage2(stubs, tmp_path, rows, targets=None, original=False, label=1, pointing=None, tstart=MJD,
+               name="data_2026-01-01_00-00-00"):
     rec, state = stubs
     work = tmp_path / ("orig" if original else "new")
-    obs = make_obs(work, rows, targets)
+    obs = make_obs(work, rows, targets, name)
+    state["pointing"], state["tstart"] = pointing, tstart
     state["influx"] = pd.DataFrame({"x": [1]})
 
     def predict(command):
         # FETCH stand-in: label every candidate in the CSV
         cands = pd.read_csv(str(obs / (obs.name + ".csv")))
         names = [str(obs / "cands" / "cand_tstart_{}_tcand_{:.7f}_dm_{:.5f}_snr_{:.5f}.h5".format(
-            MJD, r.tcand, r.dm, r.snr)) for r in cands.itertuples()]
+            tstart, r.tcand, r.dm, r.snr)) for r in cands.itertuples()]
         pd.DataFrame({"candidate": names, "probability": 0.9, "label": label}).to_csv(
             str(obs / "cands" / "results_a.csv"), index=False)
 
@@ -345,20 +431,47 @@ def test_stage2_no_targets_unchanged(stubs, tmp_path):
     assert sorted(new_kept["dm"]) == [22.5359, 37.1408, 380.287]
 
 
+def test_stage2_pointing_elsewhere_unchanged(stubs, tmp_path):
+    # with real pointing columns, but no known pulsar near
+    new = run_stage2(stubs, tmp_path, CAND_ROWS, pointing=(10.0, 0.0))
+    old = run_stage2(stubs, tmp_path, CAND_ROWS, pointing=(10.0, 0.0), original=True)
+    assert new[1] == old[1] and new[2] == old[2]
+
+
 def test_stage2_with_target(stubs, tmp_path):
     kept, stage3, slack = run_stage2(stubs, tmp_path, CAND_ROWS, targets=[J1022])
     # the normal three plus the two window candidates that pass the other cuts
     assert sorted(kept["dm"]) == [10.2914, 10.5828, 22.5359, 37.1408, 380.287]
-    # window candidates are summarised, not sent to stage 3 one by one
-    assert len(stage3) == 3 and not any("_dm_10." in name for name in stage3)
-    summary = [m for m in slack if m and m.startswith("Low-DM targets")]
-    assert len(summary) == 1 and "J1022+1001: 2" in summary[0] and "2 window cands" in summary[0]
+    # the normal three go to stage 3, plus at most 2 plots of the target
+    assert len(stage3) == 5 and sum("_dm_10." in name for name in stage3) == 2
+    summary = [m for m in slack if m and m.startswith("Known pulsars")]
+    assert summary == ["Known pulsars at MJD {}: J1022+1001: 2 FETCH-positive, 2 plotted; "
+                       "2 low-DM window cands".format(MJD)]
 
 
 def test_stage2_target_but_fetch_negative(stubs, tmp_path):
     kept, stage3, slack = run_stage2(stubs, tmp_path, CAND_ROWS, targets=[J1022], label=0)
     assert len(kept) == 5 and stage3 == []
-    assert any(m and "J1022+1001: 0" in m for m in slack)
+    assert any(m and "J1022+1001: 0 FETCH-positive" in m for m in slack)
+
+
+def test_stage2_bright_pulsar_visit(stubs, tmp_path):
+    # 30 FETCH-positive pulses from B0355+54 per file, plus one unrelated candidate
+    rows = [(9.0 + i, 1000 + i * 15000, 0.3 + i * 3.8, 3, 100, 57.0 + (i % 3) * 0.3, 20, 0, 0)
+            for i in range(30)] + [(110.49, 690470, 176.76, 7, 300, 380.287, 58758, 0, 0)]
+    step = 8.4 / 1440
+    starts = [MJD, MJD + step, MJD + 2 * step, MJD + 2 * step + 2 / 24.0]  # 3 files, then a new visit
+    sent = []
+    for i, tstart in enumerate(starts):
+        _, stage3, slack = run_stage2(stubs, tmp_path, rows, pointing=(59.72, 54.22), tstart=tstart,
+                                      name="data_2026-01-01_00-0{}-00".format(i))
+        pulsar_plots = [n for n in stage3 if "_dm_380." not in n]
+        assert len(stage3) - len(pulsar_plots) == 1  # the unrelated candidate always goes
+        sent.append(len(pulsar_plots))
+        if pulsar_plots:
+            assert all("_snr_38." in n or "_snr_37." in n for n in pulsar_plots)  # the brightest
+        assert "J0358+5413: 30 FETCH-positive, {} plotted".format(len(pulsar_plots)) in slack[-1]
+    assert sent == [2, 2, 0, 2]
 
 
 def test_stage2_target_window_capped(stubs, tmp_path):

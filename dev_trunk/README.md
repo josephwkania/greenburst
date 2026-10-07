@@ -68,3 +68,7 @@ Arguments:
 - `low_dm_targets.py` : Searches below the normal DM limits (heimdall from DM 10, stage 2 cut at DM 20)
   when pointed at a known low-DM pulsar (`low_dm_targets.csv`). Rebuild the list with
   `python3 low_dm_targets.py make`; tests: `python -m pytest tests` in `dev_trunk`
+- `pulsar_plot_limit.py` : Known pulsars (bright_pulsars.csv and the low-DM targets) get at most 2 Slack plots
+  per file in the first 2 files of a visit; the rest are counted in one summary per file.
+  Rebuild the list with pulsar_lookup.py --all --dm-match --fetch-positive --csv bright, then
+  `python3 pulsar_plot_limit.py make-bright --summary bright_summary.csv`

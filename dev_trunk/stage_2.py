@@ -23,7 +23,8 @@ from pika.exceptions import *
 
 from gpu_client import send2gpuQ
 from influx_2df import extend_df, mjd2influx
-from low_dm_targets import read_obs_targets, split_for_stage3, summary_message, window_only_mask
+from low_dm_targets import read_obs_targets, window_only_mask
+from pulsar_plot_limit import select_for_stage3
 from pika_send import send2Q
 from slack_send import send_msg_2_slack
 
@@ -213,14 +214,13 @@ def begin_main(values):
                     f"Got {label_mask.sum()} cands post-FETCH at MJD {mjd}"
                 )
                 
-                if targets:
-                    # One summary for the target pulsar instead of a plot per pulse
-                    files, per_target = split_for_stage3(
-                        results[label_mask]["candidate"], targets, values.dm
-                    )
-                    send_msg_2_slack(summary_message(per_target, targets, n_window, mjd))
-                else:
-                    files = list(results[label_mask]["candidate"])
+                # Known pulsars: a few plots per visit, the rest in one summary
+                files, pulsar_summary = select_for_stage3(
+                    results[label_mask]["candidate"], targets, cand_df_masked, mjd,
+                    base_work_dir, n_window,
+                )
+                if pulsar_summary:
+                    send_msg_2_slack(pulsar_summary)
 
                 if len(files) >= 1:
                     if values.outfile:

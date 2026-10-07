@@ -11,8 +11,7 @@ within RADIUS of a pulsar in TARGETS_FILE:
             and writes the matched targets to <obs dir>/low_dm_targets.csv;
     stage 2 also keeps candidates within max(DM_TOL_ABS, DM_TOL_FRAC * DM) of
             a target's DM (at most MAX_WINDOW_CANDS per file, brightest
-            first), and sends one Slack summary for them instead of passing
-            each FETCH-positive one to stage 3.
+            first); their Slack plots are limited by pulsar_plot_limit.py.
 All other files and candidates are processed exactly as before. Any error
 here falls back to the normal limits.
 
@@ -40,9 +39,6 @@ DM_TOL_FRAC = 0.1
 MAX_WINDOW_CANDS = 100  # per file, so a bright pulsar cannot flood candmaker/FETCH
 
 Target = namedtuple("Target", ["name", "ra_deg", "dec_deg", "dm"])
-
-H5_DM_PATTERN = re.compile(r"_dm_([0-9.]+)")
-
 
 def load_targets(path=TARGETS_FILE):
     """
@@ -198,44 +194,6 @@ def window_only_mask(cand_df, targets, normal_mask, max_cands=MAX_WINDOW_CANDS):
         logging.info("Keeping the %d brightest of %d target-window candidates", max_cands, mask.sum())
         mask = trimmed
     return mask
-
-
-def dm_from_h5_name(h5_path):
-    match = H5_DM_PATTERN.search(os.path.basename(str(h5_path)))
-    return float(match.group(1)) if match else None
-
-
-def split_for_stage3(candidates, targets, dm_cut):
-    """
-    Separates FETCH-positive candidates that were only kept for a target's DM
-    window (summarised, not sent to stage 3) from the rest (sent as before).
-    Args:
-        candidates: h5 paths of FETCH-positive candidates.
-        targets: The observation's targets.
-        dm_cut: stage 2's normal minimum DM.
-
-    Returns:
-        (to stage 3, {target name: count of window-only candidates})
-    """
-    to_stage3, per_target = [], {}
-    for candidate in candidates:
-        dm = dm_from_h5_name(candidate)
-        hits = [t for t in targets if dm is not None and dm <= dm_cut and dm_window_mask([dm], [t])[0]]
-        if hits:
-            name = min(hits, key=lambda t: abs(t.dm - dm)).name
-            per_target[name] = per_target.get(name, 0) + 1
-        else:
-            to_stage3.append(candidate)
-    return to_stage3, per_target
-
-
-def summary_message(per_target, targets, n_window, mjd):
-    if not targets:
-        return None
-    parts = ["{}: {}".format(t.name, per_target.get(t.name, 0)) for t in targets]
-    return "Low-DM targets at MJD {}: {} window cands, FETCH-positive per target {}".format(
-        mjd, n_window, ", ".join(parts)
-    )
 
 
 # ---------------------------------------------------------------- target list
