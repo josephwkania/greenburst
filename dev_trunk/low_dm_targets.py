@@ -21,6 +21,14 @@ column:
     canonical  the normal pulsars in CANONICAL_TARGETS: pulsars below the DM cut
                with real L-band time on source and many predicted pulses (sp_rates)
 Its `nanograv` column is "15yr" for pulsars in the NANOGrav 15-year data set.
+The single-pulse columns come from single_pulse_estimates.csv, made with sp_rates
+(`sp-rates targets --targets low_dm_targets.csv -o single_pulse_estimates.csv`):
+    sp_per_hour_low/mid/high  stage 2 candidates per hour on axis (pessimistic,
+                              central, optimistic energy model; capped at 500/h)
+    single_pulses             likely (pessimistic >= 1/h), possible (central >= 1/h),
+                              marginal (optimistic >= 1/h), unlikely, or unknown
+                              (no usable catalogue flux)
+    sp_notes                  caveats: zero-DM filter, scintillation, rate limit
 
 Make the target list (needs the psrcat program and catalogue):
     python3 low_dm_targets.py make -o low_dm_targets.csv
@@ -267,7 +275,9 @@ def targets_from_psrcat(output, min_dec=-46.0, with_p0=False):
     return targets
 
 
-TARGET_COLUMNS = list(Target._fields) + ["p0_s", "class", "nanograv"]
+ESTIMATES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "single_pulse_estimates.csv")
+ESTIMATE_COLUMNS = ["sp_per_hour_low", "sp_per_hour_mid", "sp_per_hour_high", "single_pulses", "sp_notes"]
+TARGET_COLUMNS = list(Target._fields) + ["p0_s", "class", "nanograv"] + ESTIMATE_COLUMNS
 
 
 def target_rows(pairs):
@@ -280,6 +290,20 @@ def target_rows(pairs):
     return rows
 
 
+def add_estimates(rows, path=ESTIMATES_FILE):
+    """Appends the single-pulse columns from an sp_rates estimates CSV (blank if missing)."""
+    estimates = {}
+    if path and os.path.isfile(path):
+        with open(path) as f:
+            estimates = {r["name"]: r for r in csv.DictReader(f)}
+    elif path:
+        logging.warning("No single-pulse estimates at %s; leaving those columns blank", path)
+    missing = [r[0] for r in rows if r[0] not in estimates]
+    if estimates and missing:
+        logging.warning("No single-pulse estimate for %s", ", ".join(missing))
+    return [row + [estimates.get(row[0], {}).get(c, "") for c in ESTIMATE_COLUMNS] for row in rows]
+
+
 def run_psrcat(psrcat, args):
     return subprocess.run(
         [psrcat, "-c", "jname raj decj dm p0", "-o", "short", "-nohead", "-nonumber"] + list(args),
@@ -288,7 +312,7 @@ def run_psrcat(psrcat, args):
 
 
 def make_target_list(out, psrcat="psrcat", max_p0=MSP_MAX_P0, max_dm=20.2, min_dec=-46.0,
-                     canonical=CANONICAL_TARGETS):
+                     canonical=CANONICAL_TARGETS, estimates=ESTIMATES_FILE):
     """
     Writes the target list: every MSP below the DM cut, plus the named normal pulsars.
     """
@@ -299,7 +323,7 @@ def make_target_list(out, psrcat="psrcat", max_p0=MSP_MAX_P0, max_dm=20.2, min_d
     pairs += [pair for pair in named if pair[0].name not in found]
     if canonical and len(named) < len(canonical):
         logging.warning("psrcat found %d of the %d named pulsars", len(named), len(canonical))
-    rows = target_rows(pairs)
+    rows = add_estimates(target_rows(pairs), estimates)
     with open(out, "w") as f:
         writer = csv.writer(f)
         writer.writerow(TARGET_COLUMNS)
@@ -323,8 +347,10 @@ if __name__ == "__main__":
     make.add_argument("--min-dec", type=float, default=-46.0, help="GBT southern limit")
     make.add_argument("--canonical", nargs="*", default=list(CANONICAL_TARGETS),
                       help="normal pulsars to add by name (default: CANONICAL_TARGETS)")
+    make.add_argument("--estimates", default=ESTIMATES_FILE, help="sp_rates single-pulse estimates CSV")
     values = parser.parse_args()
     if values.command == "make":
-        make_target_list(values.out, values.psrcat, values.max_p0, values.max_dm, values.min_dec, values.canonical)
+        make_target_list(values.out, values.psrcat, values.max_p0, values.max_dm, values.min_dec, values.canonical,
+                         values.estimates)
     else:
         parser.print_help()

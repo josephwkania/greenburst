@@ -64,6 +64,19 @@ def test_shipped_target_list():
     assert all((float(r["p0_s"]) < 0.03) == (r["class"] == "msp") for r in rows.values())
     assert rows["J1713+0747"]["nanograv"] == "15yr" and rows["J0953+0755"]["nanograv"] == ""
     assert all((r["nanograv"] == "15yr") == (name in ldt.NANOGRAV_15YR) for name, r in rows.items())
+    ratings = {r["single_pulses"] for r in rows.values()}
+    assert ratings <= {"likely", "possible", "marginal", "unlikely", "unknown"} and "likely" in ratings
+    assert rows["J0953+0755"]["single_pulses"] == "likely" and rows["J1713+0747"]["single_pulses"] == "likely"
+
+
+def test_add_estimates(tmp_path):
+    est = tmp_path / "est.csv"
+    est.write_text("name,sp_per_hour_low,sp_per_hour_mid,sp_per_hour_high,single_pulses,sp_notes\n"
+                   "J1022+1001,500,500,500,likely,rate limited\n")
+    rows = ldt.add_estimates([["J1022+1001", 1, 2, 3, 0.016, "msp", "15yr"], ["J0000+0000", 1, 2, 3, 1.0, "canonical", ""]],
+                             str(est))
+    assert rows[0][-2:] == ["likely", "rate limited"] and rows[1][-5:] == ["", "", "", "", ""]
+    assert len(rows[0]) == len(ldt.TARGET_COLUMNS)
 
 
 def test_target_rows():

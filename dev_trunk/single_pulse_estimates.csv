@@ -1,0 +1,84 @@
+name,sp_per_hour_low,sp_per_hour_mid,sp_per_hour_high,single_pulses,sp_notes
+J0023+0923,1.18e-05,0.00728,0.203,unlikely,
+J0030+0451,1.25,55.7,342,likely,strong scintillation: detections cluster on bright days
+J0034-0534,8.87e-20,3.44e-14,2.72e-10,unlikely,
+J0125-2327,2.2,110,500,likely,strong scintillation: detections cluster on bright days; rate limited
+J0154+1833,5.7e-26,9.44e-18,2.73e-12,unlikely,
+J0203-0150,1.51e-11,7.99e-08,7.72e-06,unlikely,
+J0307+7443,,,,unknown,no S1400 in the catalogue
+J0636+5128,0.00122,0.315,5.34,marginal,strong scintillation: detections cluster on bright days
+J0636-3044,0.0355,5.52,68.4,possible,
+J0645+5158,3.77e-07,0.000431,0.0169,unlikely,
+J0740+6620,0.000265,0.101,2.14,marginal,
+J1012+5307,39.3,500,500,likely,rate limited
+J1022+1001,500,500,500,likely,strong scintillation: detections cluster on bright days; rate limited
+J1023+0038,,,,unknown,no S1400 in the catalogue
+J1024-0719,0.0422,6.23,74.9,possible,
+J1045-0436,,,,unknown,no S1400 in the catalogue
+J1048+2339,9.48e-14,8.44e-10,2.52e-07,unlikely,
+J1125+7819,0.0146,2.14,26.2,possible,strong scintillation: detections cluster on bright days
+J1142+0119,1.21e-28,1.36e-19,1.25e-13,unlikely,
+J1154-19,,,,unknown,no S1400 in the catalogue
+J1221-0633,,,,unknown,no S1400 in the catalogue
+J1231-1411,1.82e-08,2.26e-05,0.000955,unlikely,strong scintillation: detections cluster on bright days
+J1239+3239,,,,unknown,no S1400 in the catalogue
+J1300+1240,2.64e-06,0.00152,0.0412,unlikely,strong scintillation: detections cluster on bright days
+J1301+0833,,,,unknown,no S1400 in the catalogue
+J1312+0051,2.48e-13,1.85e-09,3.84e-07,unlikely,
+J1346-2610,,,,unknown,no S1400 in the catalogue
+J1356+0230,,,,unknown,no S1400 in the catalogue
+J1400-1431,2.63e-10,5.96e-07,3.51e-05,unlikely,strong scintillation: detections cluster on bright days
+J1402+1306,,,,unknown,no S1400 in the catalogue
+J1437+3049_P,500,500,500,unknown,provisional catalogue entry: S1400 = 23 may be wrong (computed rating ignored); rate limited
+J1453+1902,6.9e-12,3.02e-08,2.65e-06,unlikely,
+J1455-3330,0.00114,0.271,4.36,marginal,
+J1602+3901,,,,unknown,no S1400 in the catalogue
+J1625-0021,,,,unknown,no S1400 in the catalogue
+J1630+3550,,,,unknown,no S1400 in the catalogue
+J1630+3734,,,,unknown,no S1400 in the catalogue
+J1640+2224,1.29e-09,3.83e-06,0.000264,unlikely,
+J1710+4923,,,,unknown,no S1400 in the catalogue
+J1713+0747,500,500,500,likely,rate limited
+J1723-2837,1.11e-07,0.000201,0.0103,unlikely,
+J1730-2304,500,500,500,likely,strong scintillation: detections cluster on bright days; rate limited
+J1744-1134,9.11,459,500,likely,rate limited
+J1806+2819,,,,unknown,no S1400 in the catalogue
+J1847+01,,,,unknown,no S1400 in the catalogue
+J1857+0943,500,500,500,likely,strong scintillation: detections cluster on bright days; rate limited
+J1908+1035_P,1.53e-33,8.66e-23,2.89e-16,unknown,provisional catalogue entry: S1400 = 0.012 may be wrong (computed rating ignored); strong scintillation: detections cluster on bright days
+J1908+1036,,,,unknown,no S1400 in the catalogue
+J1909-3744,0.0528,8.81,112,possible,
+J1923+2515,3.13e-15,4.94e-11,5.14e-08,unlikely,
+J2019+2425,6.07e-12,3.36e-08,3.51e-06,unlikely,
+J2029-4239,,,,unknown,no S1400 in the catalogue
+J2042+0246,7.13e-16,8.85e-12,5.55e-09,unlikely,strong scintillation: detections cluster on bright days
+J2124-3358,500,500,500,likely,strong scintillation: detections cluster on bright days; rate limited
+J2129-0429,,,,unknown,no S1400 in the catalogue
+J2145-0750,500,500,500,likely,strong scintillation: detections cluster on bright days; rate limited
+J2234+0611,1.4e-05,0.00691,0.171,unlikely,strong scintillation: detections cluster on bright days
+J2234+0944,0.0522,8.65,110,possible,
+J2256-1024,8.49e-07,0.000801,0.0287,unlikely,
+J2302+4442,0.0121,2.87,44.2,possible,
+J2310-0555,,,,unknown,no S1400 in the catalogue
+J2322+2057,1.29e-07,0.000142,0.00555,unlikely,strong scintillation: detections cluster on bright days
+J2322-2650,3.15e-08,3.51e-05,0.00138,unlikely,strong scintillation: detections cluster on bright days
+J2339-0533,,,,unknown,no S1400 in the catalogue
+J2355+0051,7.44e-14,5.48e-10,1.14e-07,unlikely,strong scintillation: detections cluster on bright days
+J0304+1932,500,500,500,likely,zero-DM filter may remove much of the pulse (W50 46 ms vs sweep 53 ms); rate limited
+J0454+5543,500,500,500,likely,rate limited
+J0814+7429,500,500,500,likely,zero-DM filter may remove much of the pulse (W50 41 ms vs sweep 19 ms); strong scintillation: detections cluster on bright days; rate limited
+J0826+2637,500,500,500,likely,rate limited
+J0837+0610,500,500,500,likely,zero-DM filter may remove much of the pulse (W50 26 ms vs sweep 43 ms); strong scintillation: detections cluster on bright days; rate limited
+J0953+0755,500,500,500,likely,zero-DM filter may remove much of the pulse (W50 9 ms vs sweep 10 ms); strong scintillation: detections cluster on bright days; rate limited
+J1136+1551,500,500,500,likely,strong scintillation: detections cluster on bright days; rate limited
+J1239+2453,500,500,500,likely,zero-DM filter may remove much of the pulse (W50 45 ms vs sweep 31 ms); strong scintillation: detections cluster on bright days; rate limited
+J1321+8323,236,500,500,likely,strong scintillation: detections cluster on bright days; rate limited
+J1509+5531,500,500,500,likely,rate limited
+J1543-0620,500,500,500,likely,rate limited
+J1825-0935,500,500,500,likely,rate limited
+J1921+2153,500,500,500,likely,zero-DM filter may remove much of the pulse (W50 34 ms vs sweep 42 ms); strong scintillation: detections cluster on bright days; rate limited
+J1932+1059,500,500,500,likely,zero-DM filter may remove much of the pulse (W50 6 ms vs sweep 11 ms); strong scintillation: detections cluster on bright days; rate limited
+J2018+2839,500,500,500,likely,rate limited
+J2048-1616,500,500,500,likely,strong scintillation: detections cluster on bright days; rate limited
+J2313+4253,500,500,500,likely,rate limited
+J2330-2005,500,500,500,likely,strong scintillation: detections cluster on bright days; rate limited
