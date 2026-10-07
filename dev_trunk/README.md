@@ -65,3 +65,6 @@ Arguments:
 - `pointing_dump.py`  : Dumps telescope positions in json format from redis database
 - `plot_cand.py`      : Plots the heimdall candiates along with RFI masks
 - `pointing_test.py`  : Dumps all redis keys possible
+- `low_dm_targets.py` : Searches below the normal DM limits (heimdall from DM 10, stage 2 cut at DM 20)
+  when pointed at a known low-DM pulsar (`low_dm_targets.csv`). Rebuild the list with
+  `python3 low_dm_targets.py make`; tests: `python -m pytest tests` in `dev_trunk`

@@ -23,11 +23,14 @@ from pika.exceptions import *
 
 from gpu_client import send2gpuQ
 from influx_2df import extend_df, mjd2influx
+from low_dm_targets import read_obs_targets, split_for_stage3, summary_message, window_only_mask
 from pika_send import send2Q
 from slack_send import send_msg_2_slack
 
 __author__ = "Devansh Agarwal"
 __email__ = "da0017@mix.wvu.edu"
+
+WORK_DIR = "/ldata/trunk"
 
 logger = logging.getLogger()
 format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -86,18 +89,28 @@ def begin_main(values):
         except EmptyDataError:
             pass
 
-    base_work_dir = "/ldata/trunk"
+    base_work_dir = WORK_DIR
     folder = files.split("/")[-2]
     fil_file = glob.glob(f"{base_work_dir}/{folder}/*jb_4096.fil")[0]
     if len(cand_lists) != 0:
         cand_df = pd.concat(cand_lists, ignore_index=True)
-        mask_thresholds = (
+        other_thresholds = (
             (cand_df["snr"] >= values.snr)
             & (cand_df["members"] >= values.members)
             & (cand_df["tcand"] <= 504)
-            & (cand_df["dm"] > values.dm)
             & (cand_df["width"] <= values.width)
         )
+        mask_thresholds = other_thresholds & (cand_df["dm"] > values.dm)
+        # Pointed at a known low-DM pulsar (see stage 1): also keep the
+        # candidates near its DM
+        targets = read_obs_targets(f"{base_work_dir}/{folder}")
+        n_window = 0
+        if targets:
+            window = window_only_mask(cand_df, targets, other_thresholds & ~mask_thresholds)
+            n_window = int(window.sum())
+            mask_thresholds = mask_thresholds | window
+            logging.info(f"Keeping {n_window} cands in the DM windows of {[t.name for t in targets]}")
+
         try:
             fil_obj = pysigproc.SigprocFile(fp=fil_file)
         except AttributeError:
@@ -200,8 +213,16 @@ def begin_main(values):
                     f"Got {label_mask.sum()} cands post-FETCH at MJD {mjd}"
                 )
                 
-                if label_mask.sum() >= 1:
-                    files = results[label_mask]["candidate"]
+                if targets:
+                    # One summary for the target pulsar instead of a plot per pulse
+                    files, per_target = split_for_stage3(
+                        results[label_mask]["candidate"], targets, values.dm
+                    )
+                    send_msg_2_slack(summary_message(per_target, targets, n_window, mjd))
+                else:
+                    files = list(results[label_mask]["candidate"])
+
+                if len(files) >= 1:
                     if values.outfile:
                         with open(f"{base_work_dir}/{folder}/stage2_results.out", "w+") as outfile:
                             for file in files:

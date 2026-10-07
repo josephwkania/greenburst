@@ -20,6 +20,7 @@ from scipy.signal import savgol_filter
 from dump_all import tel_df_to_es
 from gpu_client import send2gpuQ
 from influx_2df import mjd2influx
+from low_dm_targets import stage1_dm_min
 from pika_send import send2Q
 from slack_send import *
 
@@ -30,6 +31,8 @@ logging.getLogger("pika").setLevel(logging.INFO)
 
 __author__ = "Devansh Agarwal"
 __email__ = "da0017@mix.wvu.edu"
+
+WORK_DIR = "/ldata/trunk"
 
 
 def stage_initer(values):
@@ -120,6 +123,7 @@ def begin_main(values):
 
         fil_obj = pysigproc.SigprocFile(filterbank)
         freqs = fil_obj.chan_freqs
+        df = None  # no pointing with -m
         if values.influx:
             #This entire if-else block checks metadata presence from InfluxDB.
             #It then indexes the metadata into elasticsearch.
@@ -168,8 +172,10 @@ def begin_main(values):
         #To get this working on other machines, this is probably
         #the main thing to worry about.
         filterbank_name = filterbank.split("/")[-1].split(".")[0]
-        out_dir = "/ldata/trunk/{}/".format(filterbank_name)
+        out_dir = "{}/{}/".format(WORK_DIR, filterbank_name)
         _cmdline("mkdir -p {}".format(out_dir))
+        # Search lower DMs when pointed at a known low-DM pulsar
+        dm_min, _ = stage1_dm_min(df, out_dir)
         _cmdline(f"mv {filterbank} {out_dir}/")
         new_fil_path = f"{out_dir}{filterbank_name}.fil"
         clean_fil_path = f"{out_dir}{filterbank_name}_jb_4096.fil"
@@ -185,7 +191,7 @@ def begin_main(values):
         #_cmdline(f"cp {new_fil_path} {clean_fil_path}")
 
         heimdall_command = (
-            f"heimdall -nsamps_gulp 524288 -dm 10 10000 -boxcar_max 4096 -cand_sep_dm_trial 200 -cand_sep_time 128 -cand_sep_filter 3"
+            f"heimdall -nsamps_gulp 524288 -dm {dm_min:g} 10000 -boxcar_max 4096 -cand_sep_dm_trial 200 -cand_sep_time 128 -cand_sep_filter 3"
             + " -rfi_no_broad"
             + " -rfi_no_narrow"
             + " -output_dir {}".format(out_dir)
@@ -201,9 +207,9 @@ def begin_main(values):
         p1.join()
         p2.join()
         if values.ret:
-            logging.info(f"Stage 1 output to /ldata/trunk/{filterbank_name}")
-            return f"/ldata/trunk/{filterbank_name}"
-        send2Q("stage02_queue", f"/ldata/trunk/{filterbank_name}")
+            logging.info(f"Stage 1 output to {WORK_DIR}/{filterbank_name}")
+            return f"{WORK_DIR}/{filterbank_name}"
+        send2Q("stage02_queue", f"{WORK_DIR}/{filterbank_name}")
     except IndexError:
         logging.debug("Index error occurred.")
         pass
