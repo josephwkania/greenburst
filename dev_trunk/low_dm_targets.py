@@ -15,6 +15,13 @@ within RADIUS of a pulsar in TARGETS_FILE:
 All other files and candidates are processed exactly as before. Any error
 here falls back to the normal limits.
 
+The target list (low_dm_targets.csv) has two sets, told apart by its `class`
+column:
+    msp        every millisecond pulsar (P < 30 ms) with DM < 20.2 and Dec > -46
+    canonical  the normal pulsars in CANONICAL_TARGETS: pulsars below the DM cut
+               with real L-band time on source and many predicted pulses (sp_rates)
+Its `nanograv` column is "15yr" for pulsars in the NANOGrav 15-year data set.
+
 Make the target list (needs the psrcat program and catalogue):
     python3 low_dm_targets.py make -o low_dm_targets.csv
 """
@@ -39,6 +46,29 @@ DM_TOL_FRAC = 0.1
 MAX_WINDOW_CANDS = 100  # per file, so a bright pulsar cannot flood candmaker/FETCH
 
 Target = namedtuple("Target", ["name", "ra_deg", "dec_deg", "dm"])
+
+# Normal pulsars below the DM cut chosen with sp_rates (Apr 2019 - Oct 2026 L-band
+# pointing; predicted candidates from literature energy distributions):
+#   tier 1, bright and never recorded; tier 2, already leaking through at the
+#   lowest kept DM (20.2); tier 3, less time on source
+CANONICAL_TARGETS = (
+    "B0950+08", "B1133+16", "B1929+10", "B2327-20", "B0809+74", "B1237+25", "B2016+28",  # tier 1
+    "B2310+42", "B0823+26", "B1540-06", "B1508+55", "B0301+19", "B1822-09", "B0450+55",  # tier 2
+    "B0834+06", "B1919+21", "B2045-16", "B1322+83",  # tier 3
+)
+
+# NANOGrav 15-year data set (Agazie et al. 2023, ApJL 951, L9; 68 pulsars)
+NANOGRAV_15YR = frozenset("""
+J0023+0923 J0030+0451 J0340+4130 J0406+3039 J0437-4715 J0509+0856 J0557+1551 J0605+3757 J0610-2100
+J0613-0200 J0614-3329 J0636+5128 J0645+5158 J0709+0458 J0740+6620 J0931-1902 J1012+5307 J1012-4235
+J1022+1001 J1024-0719 J1125+7819 J1312+0051 J1453+1902 J1455-3330 J1600-3053 J1614-2230 J1630+3734
+J1640+2224 J1643-1224 J1705-1903 J1713+0747 J1719-1438 J1730-2304 J1738+0333 J1741+1351 J1744-1134
+J1745+1017 J1747-4036 J1751-2857 J1802-2124 J1811-2405 J1832-0836 J1843-1113 J1853+1303 J1857+0943
+J1903+0327 J1909-3744 J1910+1256 J1911+1347 J1918-0642 J1923+2515 J1939+2134 J1944+0907 J1946+3417
+J1955+2908 J2010-1323 J2017+0603 J2033+1734 J2043+1711 J2124-3358 J2145-0750 J2214+3000 J2229+2643
+J2234+0611 J2234+0944 J2302+4442 J2317+1439 J2322+2057
+""".split())
+MSP_MAX_P0 = 0.03  # s
 
 def load_targets(path=TARGETS_FILE):
     """
@@ -208,9 +238,10 @@ def parse_sexagesimal(text, hours):
     return -value if sign == "-" else value
 
 
-def targets_from_psrcat(output, min_dec=-46.0):
+def targets_from_psrcat(output, min_dec=-46.0, with_p0=False):
     """
-    Parses `psrcat -c "jname raj decj dm" -o short -nohead -nonumber` output.
+    Parses `psrcat -c "jname raj decj dm [p0]" -o short -nohead -nonumber` output.
+    With WITH_P0, returns (Target, p0 in s or None) pairs.
     """
     targets = []
     for line in output.splitlines():
@@ -224,24 +255,59 @@ def targets_from_psrcat(output, min_dec=-46.0):
             continue
         if ra is None or dec is None or dec < min_dec:
             continue
-        targets.append(Target(fields[0], round(ra, 6), round(dec, 6), dm))
+        target = Target(fields[0], round(ra, 6), round(dec, 6), dm)
+        if with_p0:
+            try:
+                p0 = float(fields[4])
+            except (IndexError, ValueError):
+                p0 = None
+            targets.append((target, p0))
+        else:
+            targets.append(target)
     return targets
 
 
-def make_target_list(out, psrcat="psrcat", max_p0=0.03, max_dm=20.2, min_dec=-46.0):
-    condition = "p0 < {} && dm < {}".format(max_p0, max_dm)
-    output = subprocess.run(
-        [psrcat, "-c", "jname raj decj dm", "-l", condition, "-o", "short", "-nohead", "-nonumber"],
+TARGET_COLUMNS = list(Target._fields) + ["p0_s", "class", "nanograv"]
+
+
+def target_rows(pairs):
+    """(Target, p0) pairs -> CSV rows with the class and NANOGrav columns."""
+    rows = []
+    for target, p0 in pairs:
+        cls = "msp" if p0 is not None and p0 < MSP_MAX_P0 else "canonical"
+        rows.append(list(target) + ["" if p0 is None else p0, cls, "15yr" if target.name in NANOGRAV_15YR else ""])
+    rows.sort(key=lambda r: (r[5] != "msp", r[0]))
+    return rows
+
+
+def run_psrcat(psrcat, args):
+    return subprocess.run(
+        [psrcat, "-c", "jname raj decj dm p0", "-o", "short", "-nohead", "-nonumber"] + list(args),
         stdout=subprocess.PIPE, check=True, universal_newlines=True,
     ).stdout
-    targets = targets_from_psrcat(output, min_dec)
+
+
+def make_target_list(out, psrcat="psrcat", max_p0=MSP_MAX_P0, max_dm=20.2, min_dec=-46.0,
+                     canonical=CANONICAL_TARGETS):
+    """
+    Writes the target list: every MSP below the DM cut, plus the named normal pulsars.
+    """
+    condition = "p0 < {} && dm < {}".format(max_p0, max_dm)
+    pairs = targets_from_psrcat(run_psrcat(psrcat, ["-l", condition]), min_dec, with_p0=True)
+    named = targets_from_psrcat(run_psrcat(psrcat, list(canonical)), min_dec, with_p0=True) if canonical else []
+    found = {t.name for t, _ in pairs}
+    pairs += [pair for pair in named if pair[0].name not in found]
+    if canonical and len(named) < len(canonical):
+        logging.warning("psrcat found %d of the %d named pulsars", len(named), len(canonical))
+    rows = target_rows(pairs)
     with open(out, "w") as f:
         writer = csv.writer(f)
-        writer.writerow(Target._fields)
-        for target in targets:
-            writer.writerow(target)
-    logging.info("Wrote %d targets (%s, Dec > %g) to %s", len(targets), condition, min_dec, out)
-    return targets
+        writer.writerow(TARGET_COLUMNS)
+        writer.writerows(rows)
+    logging.info("Wrote %d targets (%d msp, %d canonical, %d in NANOGrav 15yr) to %s", len(rows),
+                 sum(r[5] == "msp" for r in rows), sum(r[5] == "canonical" for r in rows),
+                 sum(r[6] == "15yr" for r in rows), out)
+    return rows
 
 
 if __name__ == "__main__":
@@ -255,8 +321,10 @@ if __name__ == "__main__":
     make.add_argument("--max-p0", type=float, default=0.03, help="seconds")
     make.add_argument("--max-dm", type=float, default=20.2)
     make.add_argument("--min-dec", type=float, default=-46.0, help="GBT southern limit")
+    make.add_argument("--canonical", nargs="*", default=list(CANONICAL_TARGETS),
+                      help="normal pulsars to add by name (default: CANONICAL_TARGETS)")
     values = parser.parse_args()
     if values.command == "make":
-        make_target_list(values.out, values.psrcat, values.max_p0, values.max_dm, values.min_dec)
+        make_target_list(values.out, values.psrcat, values.max_p0, values.max_dm, values.min_dec, values.canonical)
     else:
         parser.print_help()

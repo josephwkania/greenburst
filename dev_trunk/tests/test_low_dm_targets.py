@@ -11,6 +11,7 @@ Run from dev_trunk:  python -m pytest tests
 """
 
 import builtins
+import csv
 import importlib
 import os
 import subprocess
@@ -53,9 +54,25 @@ CAND_ROWS = [
 def test_shipped_target_list():
     targets = ldt.load_targets()
     names = {t.name for t in targets}
-    assert len(targets) >= 60
-    assert {"J1022+1001", "J2145-0750", "J1713+0747", "J1744-1134"} <= names
+    assert len(targets) >= 80
+    assert {"J1022+1001", "J2145-0750", "J1713+0747", "J1744-1134", "J0953+0755", "J2313+4253"} <= names
     assert all(t.dm < 20.2 and t.dec_deg > -46 and 0 <= t.ra_deg < 360 for t in targets)
+    with open(ldt.TARGETS_FILE) as f:
+        rows = {r["name"]: r for r in csv.DictReader(f)}
+    assert {r["class"] for r in rows.values()} == {"msp", "canonical"}
+    assert sum(r["class"] == "canonical" for r in rows.values()) == len(ldt.CANONICAL_TARGETS)
+    assert all((float(r["p0_s"]) < 0.03) == (r["class"] == "msp") for r in rows.values())
+    assert rows["J1713+0747"]["nanograv"] == "15yr" and rows["J0953+0755"]["nanograv"] == ""
+    assert all((r["nanograv"] == "15yr") == (name in ldt.NANOGRAV_15YR) for name, r in rows.items())
+
+
+def test_target_rows():
+    pairs = [(J1022, 0.01645), (ldt.Target("J0953+0755", 148.29, 7.93, 2.97), 0.253), (J2145, None)]
+    rows = ldt.target_rows(pairs)
+    assert [r[0] for r in rows] == ["J1022+1001", "J0953+0755", "J2145-0750"]  # msp first
+    assert [r[5] for r in rows] == ["msp", "canonical", "canonical"]  # unknown period: not an msp
+    assert [r[6] for r in rows] == ["15yr", "", "15yr"]
+    assert len(ldt.NANOGRAV_15YR) == 68
 
 
 def test_missing_target_list(tmp_path):
@@ -221,6 +238,9 @@ def test_targets_from_psrcat():
     )
     targets = ldt.targets_from_psrcat(text)
     assert [t.name for t in targets] == ["J1022+1001", "J1154-19", "J2124-3358"]
+    with_p0 = ldt.targets_from_psrcat("J0953+0755  09:53:09.3  +07:55:35.8  2.97  0.253065\n"
+                                      "J1022+1001  10:22:57.9  +10:01:52.8  10.26  *\n", with_p0=True)
+    assert [(t.name, p) for t, p in with_p0] == [("J0953+0755", 0.253065), ("J1022+1001", None)]
     assert targets[0].ra_deg == pytest.approx(155.74125, abs=1e-5)
     assert targets[2].dec_deg == pytest.approx(-33.979056, abs=1e-5)
 
