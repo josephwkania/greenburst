@@ -63,5 +63,6 @@ Arguments:
 ## Auxiliary Scripts
 - `peak_find.py`      : Finds RFI in bandpass
 - `pointing_dump.py`  : Dumps telescope positions in json format from redis database
+- `cleo2influx.py`    : Writes the same telescope positions to Influx from Cleo's SETI server, without serendip6's Redis
 - `plot_cand.py`      : Plots the heimdall candiates along with RFI masks
 - `pointing_test.py`  : Dumps all redis keys possible
