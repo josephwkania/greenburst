@@ -10,14 +10,22 @@ with Cleo's timestamp of the value, and "<MJD> Thump Thump" every minute. The te
 comes once a second. A client must never send anything: the server shuts down on KILL and emails NRAO about
 any request it doesn't know.
 
+It also keeps the last two minutes of beam positions in a small file (--pointing-file), one line a second,
+for udp2fil to put the position at the start of each filterbank file in its header:
+    # MJD RA_deg DEC_deg AZCORR ELCORR DATA_VALID ...
+    61348.67761460 220.473365 46.399251 45.894791 77.799158 1
+The file is replaced whole each second, so a reader never sees half of it.
+
 Run from dev_trunk (it reads config/conf.yaml):
     ./cleo2influx.py --measurement telescope_cleo
-    ./cleo2influx.py --dry-run          # print the points instead of writing them
+    ./cleo2influx.py --dry-run          # print the points instead of writing them or the file
 """
 
 import argparse
+import collections
 import json
 import logging
+import os
 import socket
 import time
 
@@ -201,6 +209,54 @@ class Telescope:
         return {"time": influx_time(mjd), "fields": fields}
 
 
+class PointingFile:
+    """The last two minutes of beam positions, for udp2fil: one line a second, oldest first."""
+
+    HEADER = (
+        "# MJD RA_deg DEC_deg AZCORR ELCORR DATA_VALID: the GREENBURST beam, "
+        "RA and Dec FK5 J2000, from cleo2influx.py\n"
+    )
+
+    def __init__(self, path, seconds=120):
+        self.path, self.seconds = path, seconds
+        self.lines = collections.deque()  # (MJD, line)
+        self.failing = False
+
+    def add(self, point):
+        f = point["fields"]
+        self.lines.append(
+            (
+                f["MJD"],
+                "%.8f %.6f %.6f %.6f %.6f %d\n"
+                % (
+                    f["MJD"],
+                    f["RA_deg"],
+                    f["DEC_deg"],
+                    f["AZCORR"],
+                    f["ELCORR"],
+                    f["DATA_VALID"],
+                ),
+            )
+        )
+        # Half a second more for the rounding of Cleo's MJDs
+        while self.lines[0][0] < f["MJD"] - (self.seconds + 0.5) / 86400:
+            self.lines.popleft()
+        tmp = self.path + ".tmp"
+        try:
+            with open(tmp, "w") as out:
+                out.write(self.HEADER)
+                out.writelines(line for _, line in self.lines)
+            os.replace(tmp, self.path)
+        except OSError as e:
+            if not self.failing:
+                logging.warning(f"Could not write {self.path}: {e!r}")
+            self.failing = True
+        else:
+            if self.failing:
+                logging.info(f"Writing {self.path} again")
+            self.failing = False
+
+
 def lines(sock):
     buf = b""
     while True:
@@ -242,13 +298,24 @@ def main():
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="print the points instead of writing them",
+        help="print the points instead of writing them or the pointing file",
+    )
+    parser.add_argument(
+        "--pointing-file",
+        default="/dev/shm/greenburst_pointing",
+        help="the last two minutes of beam positions, for udp2fil; '' for none",
     )
     args = parser.parse_args()
 
+    pointing_file = (
+        PointingFile(args.pointing_file)
+        if args.pointing_file and not args.dry_run
+        else None
+    )
+
     if args.dry_run:
 
-        def write(point):
+        def write_point(point):
             print(json.dumps(point), flush=True)
 
     else:
@@ -265,12 +332,17 @@ def main():
             database=login["db"],
         )
 
-        def write(point):
+        def write_point(point):
             point["measurement"] = args.measurement
             try:
                 client.write_points([point], time_precision="n")
             except Exception as e:
                 logging.warning(f"Could not write to Influx: {e!r}")
+
+    def write(point):
+        if pointing_file is not None:
+            pointing_file.add(point)
+        write_point(point)
 
     run(args, write)
 
