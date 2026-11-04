@@ -26,7 +26,6 @@ r = redis.StrictRedis(
     port=6379)
 
 # push stuff to influxdb
-#client=DataFrameClient(host='127.0.0.1', port=8086, username='telegraf', password='superpa$$word', database='telegraf')
 
 # this will be used for the data validity
 def flag_maker(key,val):
