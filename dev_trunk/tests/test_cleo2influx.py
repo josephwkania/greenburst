@@ -284,3 +284,82 @@ def test_sky_as_pointing_dump():
         pytest.approx(46.399236070632, abs=3e-4),
     )
     assert 0 <= gl < 360 and -90 <= gb <= 90
+
+
+# ---------------------------------------------------------------- the pointing file for udp2fil
+
+
+def read_pointing(path):
+    with open(path) as f:
+        text = f.read().splitlines()
+    assert text[0].startswith("# MJD RA_deg DEC_deg AZCORR ELCORR DATA_VALID")
+    return [line.split() for line in text[1:]]
+
+
+def test_pointing_file(tmp_path):
+    path = str(tmp_path / "greenburst_pointing")
+    _, points = replay(stream())
+    pointing = cleo2influx.PointingFile(path)
+    for point in points:
+        pointing.add(point)
+    rows = read_pointing(path)
+    assert len(rows) == len(points) == 75
+    assert all(len(row) == 6 for row in rows)
+    last = points[-1]["fields"]
+    mjd, ra, dec, az, el, valid = rows[-1]
+    assert float(mjd) == pytest.approx(last["MJD"], abs=1e-8)
+    assert (float(ra), float(dec)) == (
+        pytest.approx(last["RA_deg"], abs=1e-6),
+        pytest.approx(last["DEC_deg"], abs=1e-6),
+    )
+    assert (float(az), float(el)) == (
+        pytest.approx(last["AZCORR"], abs=1e-6),
+        pytest.approx(last["ELCORR"], abs=1e-6),
+    )
+    assert valid == "1"
+    assert os.listdir(str(tmp_path)) == ["greenburst_pointing"]
+
+
+def test_pointing_file_keeps_two_minutes(tmp_path):
+    path = str(tmp_path / "greenburst_pointing")
+    tel, _ = replay(dump())
+    pointing = cleo2influx.PointingFile(path)
+    start = 61348.7
+    for s in range(300):
+        for line in position(start + s / 86400):
+            point = tel.update(line)
+            if point is not None:
+                pointing.add(point)
+    mjds = [float(row[0]) for row in read_pointing(path)]
+    assert len(mjds) == 121
+    assert (mjds[-1] - mjds[0]) * 86400 == pytest.approx(120, abs=1e-3)
+    assert mjds == sorted(mjds)
+
+
+def test_pointing_file_after_a_gap(tmp_path):
+    path = str(tmp_path / "greenburst_pointing")
+    _, points = replay(stream())
+    pointing = cleo2influx.PointingFile(path)
+    pointing.add(points[0])
+    _, later = replay(dump() + position(points[0]["fields"]["MJD"] + 1 / 24))
+    pointing.add(later[0])
+    assert len(read_pointing(path)) == 1
+
+
+def test_pointing_file_invalid(tmp_path):
+    path = str(tmp_path / "greenburst_pointing")
+    _, points = replay(
+        dump(**{KEYS["ATMTLS"]: "TURRET_LOCK_UNLOCKED"}) + position(61348.7)
+    )
+    cleo2influx.PointingFile(path).add(points[0])
+    assert read_pointing(path)[-1][5] == "0"
+
+
+def test_pointing_file_unwritable(tmp_path, caplog):
+    pointing = cleo2influx.PointingFile(
+        str(tmp_path / "missing" / "greenburst_pointing")
+    )
+    _, points = replay(stream())
+    for point in points[:3]:
+        pointing.add(point)  # logs, doesn't raise
+    assert len([r for r in caplog.records if "Could not write" in r.getMessage()]) == 1
