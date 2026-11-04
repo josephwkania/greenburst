@@ -119,3 +119,10 @@ def test_invalid(change):
 def test_turret_angle_limits(turret, valid):
     # Valid below 110 deg or above 250 deg, after rounding to a whole degree
     assert flag_maker("ATRXOCTA", turret) == valid
+
+
+def test_pointing_test_has_same_correction():
+    # pointing_test.py keeps its own copy of the correction
+    (copy,) = functions(os.path.join(DEV_TRUNK, "pointing_test.py"), ["pointing_corr"])
+    turret, az, el = np.array([0.0, 60, 100, 260, 300]), np.full(5, 200.0), np.array([6.0, 30, 45, 60, 89.9])
+    assert np.allclose(copy(turret, az, el), pointing_corr(turret, az, el), rtol=0, atol=1e-12)
