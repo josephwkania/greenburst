@@ -68,10 +68,15 @@ def data_valid(dict):
     return maintainance_flag and turret_lock_flag and boom_flag and obs_permission and turret_angle_flag
 
 
-# Ron's corrections, check GBT memo for commensal observations
+# Ron's corrections, check GBT memo for commensal observations. The memo's offsets are where to point the
+# telescope to put a source in the L-band beam, so the beam itself is on the other side of the pointing, and
+# the azimuth offset is an angle on the sky, so it grows as 1/cos(el); known pulsar detections at the other
+# turret positions confirm both (greenburst_db analysis/pointing_correction_validation.md). Near the zenith
+# cos(el) is held at its value at 89.5 deg.
 def pointing_corr(turret_angle,tel_az,tel_el):
-    Az = (-25.18/60)*np.sin(turret_angle*np.pi/180.0) + tel_az
-    El = (-23.30/60)*(1 - np.cos(turret_angle*np.pi/180)) + tel_el
+    cos_el = np.maximum(np.cos(tel_el*np.pi/180), np.cos(89.5*np.pi/180))
+    Az = (25.18/60)*np.sin(turret_angle*np.pi/180.0)/cos_el + tel_az
+    El = (23.30/60)*(1 - np.cos(turret_angle*np.pi/180)) + tel_el
     return El, Az
 
 
